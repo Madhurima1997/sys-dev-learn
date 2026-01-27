@@ -52,7 +52,7 @@ status code: 201
 ```
 
 ### Retrieve the long url
-
+ status code: 302
 #### Request
 ``` json
 GET /{short_code}
