@@ -61,7 +61,139 @@ GET /{short_code}
 ``` json
 GET /{short_code}
 ```
+# Database
+- Choosing PostgreSQL for my use case as per below mentioned considerations:
+  - Simple key-value entries with some relational needs
+  - PostgreSQL has scalability capabilities
+  - cost effective as it is open source
+- Below is the Table design
+**URL**
+``` sql 
+CCREATE TABLE urls (
+    id BIGINT PRIMARY KEY,           -- Global ID for Base62
+    short_code VARCHAR(10) UNIQUE,      -- Base62 encoded ID
+    long_url TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by VARCHAR(50),
+    access_count BIGINT DEFAULT 0,
+  
+    UNIQUE INDEX idx_short_code (short_code),  -- Main lookup index
+    INDEX idx_created_by (created_by)
+);
+```
+
+**URL_CLICK**
+``` sql
+CREATE TABLE url_clicks (
+    id SERIAL PRIMARY KEY,
+    short_code VARCHAR(10) REFERENCES urls(short_code),
+    clicked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    referrer TEXT,
+    user_agent TEXT,
+    ip_address INET
+);
+
+CREATE INDEX idx_clicks_short_code ON url_clicks(short_code);
+CREATE INDEX idx_clicks_date ON url_clicks(clicked_at);
+```
+
+[ Need a diagram rep here] for relations
++------------------------+
+|         urls           |
++------------------------+
+| short_code (PK)        | VARCHAR(10)
+| long_url               | TEXT
+| created_at             | TIMESTAMP
+| created_by             | VARCHAR(50)
+| custom_alias (UNIQUE)  | VARCHAR(50)
+| access_count           | BIGINT
+| last_accessed_at       | TIMESTAMP
++------------------------+
+   |
+   | 1:N (optional extension)
+   ↓
++------------------------+
+|      url_clicks        |
++------------------------+
+| id (PK)                | SERIAL
+| short_code (FK)        | VARCHAR(10)
+| clicked_at             | TIMESTAMP
+| referrer               | TEXT
+| user_agent             | TEXT
+| ip_address             | INET
++------------------------+
+
+Indexes:
+- urls: idx_created_by(created_by)
+- urls: idx_created_at(created_at)
+- url_clicks: idx_clicks_short_code(short_code)
+- url_clicks: idx_clicks_date(clicked_at)
+
+# Hashing Algorithm
+- Given that we want to generate the shortest possible URL, we would consider Base 62 encoding technique. While, if we want to weigh security as main aspect, random hash generation with collision handling would be a better choice for production ready systems.
+- Base62 encoding does introduce a sharding problem, as we have sequential auto increment Ids. 
+id: 1000000 → base62: "4c92"  → shard_4 (based on first char)
+id: 1000001 → base62: "4c93"  → shard_4 (same shard!)
+id: 1000002 → base62: "4c94"  → shard_4 (same shard!)
+
+- This is called hot shard problem.
+- We can solve this by using the entire short code as hash. Since hash would be generated from unique global Id, it would not collide.
+
 
 # Trade Off
-Q. Do we allow creating multiple short URLs for one long url, to maintain idempotency ?
-A. 
+#### Do we allow creating multiple short URLs for one long url, to maintain idempotency ?
+#### Should we have fewer shards and more data in it? or more shards with fewer data in it? What is the optimum number of shards 
+#### Which HAshing technique to use 
+Comparison Table: Base62 vs MD5 vs Hash+Collision Resolution
+ASPECT
+BASE62 (AUTO-INCREMENT)
+MD5 HASH
+RANDOM HASH + COLLISION RESOLUTION
+URL Length
+⭐⭐⭐ 4-7 chars
+❌ 32 chars
+⭐⭐ 6-8 chars
+Example Output
+abc1, xyz9
+5d41402abc4b2a76b9719d911017c592
+aB3x9K, mN7pQ2
+Collision Risk
+⭐⭐⭐ Zero
+⭐⭐⭐ Near zero
+⭐⭐ Low (handled)
+Implementation Complexity
+⭐⭐⭐ Simple
+⭐⭐⭐ Simple
+⭐ Complex
+Performance
+⭐⭐⭐ O(1) generation
+⭐⭐⭐ O(1) generation
+⭐ O(n) worst case
+Database Writes
+1 write
+1 write
+1-3 writes avg
+Security/Privacy
+❌ Predictable
+⭐⭐⭐ Unpredictable
+⭐⭐⭐ Unpredictable
+Sharding Distribution
+❌ Poor (sequential)
+⭐⭐⭐ Excellent
+⭐⭐⭐ Excellent
+Memory Usage
+⭐⭐⭐ Low
+⭐⭐ Medium
+⭐ Higher (collision tracking)
+Scalability
+⭐⭐ Good
+⭐⭐⭐ Excellent
+⭐⭐ Good
+URL Guessability
+❌ Easily guessable
+⭐⭐⭐ Not guessable
+⭐⭐⭐ Not guessable
+Storage Efficiency
+⭐⭐⭐ 10 bytes
+❌ 32 bytes
+⭐⭐ 8 bytes
