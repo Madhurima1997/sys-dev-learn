@@ -159,3 +159,7 @@ Comparison Table: Base62 vs MD5 vs Hash+Collision Resolution
 |Scalability|⭐⭐ Good|⭐⭐⭐ Excellent|⭐⭐ Good|
 |URL Guessability|❌ Easily guessable|⭐⭐⭐ Not guessable|⭐⭐⭐ Not guessable|
 |Storage Efficiency|⭐⭐⭐ 10 bytes|❌ 32 bytes|⭐⭐ 8 bytes
+
+# Loopholes for me to look at
+- UUID to BAse62 may also lead to collision eventually. How to solve that ?
+- How is access count maintained, given a caching layer. Wouldn't the cache hits essentially not allow the url to be never counted in ?
